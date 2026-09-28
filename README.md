@@ -9,7 +9,7 @@ Read and reply to your GroupMe chats on Meta Ray-Ban Display glasses, using the 
 - Reply with one pinch using quick replies, or type or dictate with the glasses keyboard
 - Scroll up to load older messages
 
-No build step. Plain HTML/CSS/JS.
+No build step. Plain HTML/CSS/JS, plus two small Vercel functions for phone pairing (`api/`).
 
 ## Controls (Neural Band)
 
@@ -29,21 +29,28 @@ Change the quick replies in `config.js`.
 
 ## Sign in
 
-Either way, your access token is stored only on the device (in the browser's local storage).
+**On the glasses: connect with a code** (like X Glass)
 
-**Option 1: GroupMe sign-in (recommended once hosted)**
+1. On the glasses, pinch **Connect with a code**. A 6-character code appears.
+2. On your phone, go to **groupme-psi.vercel.app/connect**, enter the code and sign in to GroupMe.
+3. The glasses load your chats within a few seconds.
 
-1. Go to [dev.groupme.com/applications](https://dev.groupme.com/applications) and create an application.
-2. Set the **Callback URL** to where the app is hosted, for example `https://groupme-psi.vercel.app/`.
-3. Paste the application's **client ID** into `GROUPME_CLIENT_ID` in `config.js` and push.
+Your password is only ever typed on your phone. Codes expire after 10 minutes, and the sign-in is handed to the glasses once.
 
-A **Sign in with GroupMe** button then appears. GroupMe sends the browser back to the app with a token, and the app removes it from the address bar right away.
+**On a phone or computer:** pinch **Sign in on this device**.
 
-**Option 2: paste your token**
+**For testing:** paste an access token from [dev.groupme.com](https://dev.groupme.com) (**Access Token**, top right), or add `?demo` to the URL for fake chats.
 
-Sign in at [dev.groupme.com](https://dev.groupme.com), click **Access Token** at the top right, and paste it into the app. Useful for testing.
+The access token is stored only on the device (in the browser's local storage).
 
-**Demo:** add `?demo` to the URL for fake chats, no account needed.
+### How pairing works
+
+- `POST /api/pair` makes a code plus a secret claim token that only the glasses know.
+- `/connect` (phone) sends the code to `/api/auth/start`, which checks it, remembers it in a 10-minute HttpOnly cookie and redirects to GroupMe's sign-in.
+- GroupMe returns the phone to the app with `?access_token=…`; the app sends it to `PUT /api/pair`, which checks it with GroupMe and stores it (AES-256-GCM encrypted with `GM_SECRET`) against the code in Vercel's runtime cache.
+- The glasses poll `GET /api/pair?code&claim` and receive the token once; the entry is then deleted.
+
+Setup: the GroupMe application's **Callback URL** is `https://groupme-psi.vercel.app/`, its client ID is in `config.js`, and `GM_SECRET` (a long random string) is set in the Vercel project's environment variables.
 
 ## How it works
 
@@ -57,7 +64,7 @@ Sign in at [dev.groupme.com](https://dev.groupme.com), click **Access Token** at
 python3 -m http.server 8610
 ```
 
-Open http://localhost:8610/?demo in Chrome. The arrow keys stand in for band swipes, Enter for a pinch, and Escape for back. For a realistic preview, use Meta's **Ray-Ban Display Simulator** Chrome extension.
+Open http://localhost:8610/?demo in Chrome. (Pairing needs the `api/` functions: use `vercel dev` for those.) The arrow keys stand in for band swipes, Enter for a pinch, and Escape for back. For a realistic preview, use Meta's **Ray-Ban Display Simulator** Chrome extension.
 
 ## Put it on the glasses
 
@@ -72,3 +79,5 @@ Open http://localhost:8610/?demo in Chrome. The arrow keys stand in for band swi
 | `groupme.js` | GroupMe API calls |
 | `demo.js` | Fake chats for `?demo` |
 | `config.js` | Client ID, quick replies, polling speed |
+| `connect.html` | Phone page for entering the glasses' code |
+| `api/pair.js`, `api/auth/start.js` | Pairing: codes, GroupMe sign-in hand-off |

@@ -1,0 +1,15 @@
+{
+  "regions": ["iad1"],
+  "rewrites": [
+    { "source": "/connect", "destination": "/connect.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ]
+}

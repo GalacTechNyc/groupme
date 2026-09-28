@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>Connect GroupMe</title>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon-512.png">
+  <style>
+    :root { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #f7fbff; background: #000; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #000; display: grid; place-items: center; padding: 24px 16px; }
+    .card { width: min(480px, 100%); border: 1px solid #1d3442; border-radius: 24px; background: #050b0f; padding: 28px 24px; }
+    .icon { display: block; width: 64px; height: 64px; border-radius: 16px; }
+    .brand { margin-top: 12px; font-size: 15px; font-weight: 700; color: #00aff0; }
+    h1 { font-size: 30px; line-height: 1.1; margin: 10px 0 12px; }
+    p { color: #a3b2bc; line-height: 1.5; margin: 0 0 16px; }
+    .code {
+      width: 100%; font: 800 30px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.2em; text-align: center;
+      text-transform: uppercase; border: 1px solid #2c4452; background: #000; color: #fff; border-radius: 16px; padding: 16px; margin: 4px 0 14px;
+    }
+    .code:focus { outline: none; border-color: #00aff0; box-shadow: 0 0 0 3px rgba(0, 175, 240, 0.3); }
+    button { width: 100%; border: 0; border-radius: 16px; padding: 16px; background: #00aff0; color: #000; font-weight: 800; font-size: 17px; cursor: pointer; }
+    button:disabled { opacity: 0.5; }
+    .ok { border: 1px solid #1d704b; background: #072318; padding: 18px; border-radius: 16px; color: #a5f4ce; line-height: 1.5; }
+    .error { border: 1px solid #7a2d37; background: #26090e; padding: 14px; border-radius: 14px; color: #ffb0bb; margin-bottom: 14px; line-height: 1.4; }
+    .small { font-size: 13px; color: #6f808b; margin-top: 16px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <img class="icon" src="/icon-512.png" width="64" height="64" alt="">
+    <div class="brand">GroupMe for Ray-Ban Display</div>
+    <div id="success" hidden>
+      <h1>Connected.</h1>
+      <div class="ok">Look back at your glasses: your chats will load in a few seconds.</div>
+    </div>
+    <div id="formWrap">
+      <h1>Connect your glasses</h1>
+      <p>On your glasses, open GroupMe and pinch <b>Connect with a code</b>. Enter the 6-character code you see there.</p>
+      <div id="error" class="error" hidden></div>
+      <form id="form">
+        <input id="code" class="code" maxlength="6" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="ABC234" inputmode="text" required>
+        <button id="go" type="submit">Continue to GroupMe →</button>
+      </form>
+      <div class="small">You sign in to GroupMe here on your phone. Your password is never entered on the glasses.</div>
+    </div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const code = document.getElementById('code');
+    if (params.get('paired') === '1') {
+      document.getElementById('success').hidden = false;
+      document.getElementById('formWrap').hidden = true;
+    } else {
+      code.value = (params.get('code') || '').toUpperCase();
+      const error = params.get('auth_error');
+      if (error) {
+        const el = document.getElementById('error');
+        el.hidden = false;
+        el.textContent = error;
+      }
+      code.addEventListener('input', () => {
+        code.value = code.value.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 6);
+      });
+      document.getElementById('form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (code.value.length !== 6) return code.focus();
+        document.getElementById('go').disabled = true;
+        location.href = '/api/auth/start?pair=' + encodeURIComponent(code.value);
+      });
+      if (!code.value) code.focus();
+    }
+  </script>
+</body>
+</html>

@@ -124,88 +124,151 @@ function avatar(url, name, cls = '') {
 // ---------- chats list and sign-in ----------
 
 function signinRows() {
-  const rows = [];
+  const rows = [
+    {
+      ico: '📱',
+      title: 'Connect with a code',
+      sub: 'Sign in on your phone: no typing on the glasses',
+      hint: 'Pinch to get a code',
+      run: startPairing,
+    },
+  ];
   if (GROUPME_CLIENT_ID)
     rows.push({
       ico: '→',
-      title: 'Sign in with GroupMe',
-      sub: 'Opens GroupMe’s sign-in page',
-      hint: 'Pinch to sign in',
+      title: 'Sign in on this device',
+      sub: 'For a phone or computer',
+      hint: 'Pinch to open GroupMe’s sign-in page',
       run: openSignIn,
     });
-  rows.push({
-    kind: 'info',
-    ico: '👓',
-    title: 'On the glasses? Sign in on your phone',
-    sub: 'Open this app on your phone, sign in, tap “Set up glasses”, then paste that link as this app’s URL in the Meta AI app.',
-    hint: '',
-  });
-  rows.push({ kind: 'input', hint: 'Pinch to paste or type your access token' });
-  rows.push({
-    kind: 'info',
-    ico: 'ⓘ',
-    title: 'Where’s my token?',
-    sub: 'dev.groupme.com → sign in → Access Token (top right). It stays on this device.',
-    hint: '',
-  });
   rows.push({ ico: '▶', title: 'Try the demo', sub: 'Fake chats, no account needed', hint: 'Pinch to open the demo', run: () => (location.search = '?demo') });
+  rows.push({ kind: 'input', hint: 'Or paste an access token from dev.groupme.com' });
   return rows;
 }
 
 function chatRows() {
   const rows = state.convs.map((c) => ({ kind: 'conv', conv: c, hint: 'Swipe ▲▼ to pick a chat · pinch to open' }));
-  if (store.get('gm.token') && !new URLSearchParams(location.search).has('demo'))
-    rows.push({
-      ico: '👓',
-      title: 'Set up glasses',
-      sub: state.setupShown ? glassesLink() : 'Copy a link that signs the glasses in',
-      link: state.setupShown,
-      hint: 'Pinch to copy the glasses sign-in link',
-      run: shareGlassesLink,
-    });
   rows.push({ ico: '⎋', title: 'Sign out', sub: state.me ? `Signed in as ${state.me.name}` : '', hint: 'Pinch to sign out', run: () => signOut() });
   return rows;
 }
 
 // GroupMe's sign-in page is on another site. If the browser doesn't leave
-// (the glasses may not allow it), explain the phone route instead.
+// (the glasses don't allow it), point to the code instead.
 function openSignIn() {
   let left = false;
   addEventListener('pagehide', () => (left = true), { once: true });
   location.href = `https://oauth.groupme.com/oauth/authorize?client_id=${encodeURIComponent(GROUPME_CLIENT_ID)}`;
   setTimeout(() => {
-    if (!left && document.visibilityState === 'visible') hint('Can’t open sign-in here: sign in on your phone instead', true);
+    if (!left && document.visibilityState === 'visible') hint('Can’t open sign-in here: use Connect with a code', true);
   }, 2500);
 }
 
-// A link to this app carrying the token in the #fragment (never sent to any
-// server). Pasted as the web app URL in the Meta AI app, it signs the glasses in.
-function glassesLink() {
-  return `${location.origin}${location.pathname}#access_token=${store.get('gm.token')}`;
+// ---------- phone pairing ----------
+// The glasses get a 6-character code, you enter it at /connect on your phone and
+// sign in to GroupMe there, and the glasses pick up the sign-in (see api/pair.js).
+
+async function pairApi(method, query = '', body) {
+  const res = await fetch('/api/pair' + query, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: method === 'GET' ? undefined : JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || `Pairing error ${res.status}`), { status: res.status });
+  return data;
 }
 
-async function shareGlassesLink() {
-  const link = glassesLink();
+function pairRows() {
+  return [
+    { kind: 'code', hint: '' },
+    { ico: '↻', title: 'New code', sub: '', hint: 'Pinch for a new code', run: startPairing },
+    { ico: '←', title: 'Back', sub: '', hint: 'Pinch to go back', run: cancelPairing },
+  ];
+}
+
+function showPairing(status) {
+  state.view = 'pair';
+  state.pairStatus = status;
+  titleEl.textContent = 'Connect GroupMe';
+  chatEl.hidden = true;
+  listEl.hidden = false;
+  state.rows = pairRows();
+  state.idx = 0;
+  renderList();
+  histPush();
+}
+
+async function startPairing() {
+  clearPairing();
+  showPairing('Making a code…');
   try {
-    if (navigator.share) {
-      await navigator.share({ title: 'GroupMe glasses sign-in', url: link });
-      return hint('Paste it as this app’s URL in the Meta AI app');
-    }
-    await navigator.clipboard.writeText(link);
-    hint('Copied: paste it as this app’s URL in the Meta AI app');
-  } catch (e) {
-    if (e?.name === 'AbortError') return;
-    // Couldn't share or copy: show the link so it can be copied by hand.
-    state.setupShown = true;
-    state.rows = chatRows();
+    state.pair = await pairApi('POST');
+    store.set('gm.pair', JSON.stringify(state.pair));
+    state.pairStatus = 'Waiting for your phone…';
     renderList();
-    hint('Copy the link shown above', true);
+    pollPairing();
+  } catch (e) {
+    state.pairStatus = `Couldn’t make a code: ${e.message}`;
+    renderList();
   }
+}
+
+async function pollPairing() {
+  clearTimeout(state.pairTimer);
+  const pair = state.pair;
+  if (!pair || state.view !== 'pair') return;
+  if (Date.now() > pair.expiresAt) {
+    clearPairing();
+    state.pairStatus = 'Code expired: pinch New code';
+    return renderList();
+  }
+  try {
+    const q = `?code=${encodeURIComponent(pair.code)}&claim=${encodeURIComponent(pair.claimToken)}`;
+    const data = await pairApi('GET', q);
+    if (state.pair !== pair) return;
+    if (data.ready && data.token) {
+      clearPairing();
+      store.set('gm.token', data.token);
+      state.pairStatus = 'Connected!';
+      renderList();
+      return start(createApi(data.token));
+    }
+    renderList(); // refresh the countdown
+  } catch (e) {
+    if (e.status === 404 || e.status === 403) {
+      clearPairing();
+      state.pairStatus = 'Code expired: pinch New code';
+      return renderList();
+    }
+  }
+  state.pairTimer = setTimeout(pollPairing, 2200);
+}
+
+function clearPairing() {
+  clearTimeout(state.pairTimer);
+  state.pair = null;
+  store.set('gm.pair', null);
+}
+
+function cancelPairing() {
+  clearPairing();
+  showSignin();
+}
+
+function pairHtml(sel) {
+  const pair = state.pair;
+  const host = pair ? new URL(pair.connectUrl).host + '/connect' : location.host + '/connect';
+  const left = pair ? Math.max(0, Math.ceil((pair.expiresAt - Date.now()) / 60000)) : 0;
+  return `<li class="row pair${sel}" data-i="0">
+    <div class="pair-code">${esc(pair?.code || '······')}</div>
+    <div class="pair-how">On your phone, go to <b>${esc(host)}</b> and enter this code</div>
+    <div class="pair-status">${esc(state.pairStatus || '')}${pair ? ` · expires in ${left} min` : ''}</div></li>`;
 }
 
 function rowHtml(r, i) {
   const sel = i === state.idx ? ' sel' : '';
   if (r.kind === 'input') return `<li class="row input-row${sel}" data-i="${i}"></li>`;
+  if (r.kind === 'code') return pairHtml(sel);
   if (r.kind === 'conv') {
     const c = r.conv;
     const who = c.previewName && c.previewName === state.me?.name ? 'You' : c.previewName;
@@ -215,8 +278,8 @@ function rowHtml(r, i) {
       <div class="txt"><b>${esc(c.name)}</b><small>${esc(preview)}</small></div>
       <span class="when">${ago(c.time)}</span></li>`;
   }
-  return `<li class="row${r.kind === 'info' || r.link ? ' info' : ''}${sel}" data-i="${i}"><span class="ico">${r.ico}</span>
-    <div class="txt"><b>${esc(r.title)}</b><small${r.link ? ' class="link"' : ''}>${esc(r.sub)}</small></div></li>`;
+  return `<li class="row${r.kind === 'info' ? ' info' : ''}${sel}" data-i="${i}"><span class="ico">${r.ico}</span>
+    <div class="txt"><b>${esc(r.title)}</b>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div></li>`;
 }
 
 function renderList() {
@@ -656,6 +719,7 @@ window.addEventListener('popstate', () => {
   lastPopAt = performance.now();
   trapArmed = false;
   if (state.view === 'chat') closeChat();
+  else if (state.view === 'pair') cancelPairing();
 });
 
 function backLater(fn) {
@@ -669,6 +733,10 @@ function backLater(fn) {
 
 document.addEventListener('keydown', (e) => {
   if (state.view === 'chat') return chatKey(e);
+  if (state.view === 'pair' && (e.key === 'Escape' || e.key === 'Backspace')) {
+    e.preventDefault();
+    return backLater(cancelPairing);
+  }
   // Keep the caret keys for editing while typing a token on a keyboard.
   if (document.activeElement === tokenInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Backspace')) return;
   listKey(e);
@@ -722,8 +790,8 @@ msgsEl.addEventListener(
 
 const params = new URLSearchParams(location.search);
 
-// A token arrives in the URL from GroupMe's sign-in (?access_token=) or from
-// the glasses setup link (#access_token=). Save it and clear it from the address bar.
+// Back from GroupMe's sign-in, the token arrives as ?access_token=. Save it and
+// clear it from the address bar. (#access_token= links from an older version work too.)
 function tokenFromUrl() {
   const token = params.get('access_token') || new URLSearchParams(location.hash.slice(1)).get('access_token');
   if (!token) return null;
@@ -731,16 +799,32 @@ function tokenFromUrl() {
   history.replaceState(null, '', location.pathname);
   return token;
 }
-tokenFromUrl();
-addEventListener('hashchange', () => {
-  const token = tokenFromUrl();
-  if (token) start(createApi(token));
-});
 
-if (params.has('demo')) {
-  import('./demo.js').then(({ demoApi }) => start(demoApi));
-} else if (store.get('gm.token')) {
-  start(createApi(store.get('gm.token')));
-} else showSignin();
+async function boot() {
+  const token = tokenFromUrl();
+  if (params.has('demo')) {
+    const { demoApi } = await import('./demo.js');
+    return start(demoApi);
+  }
+  if (token && params.get('access_token')) {
+    // If this phone came here to connect glasses (/connect), hand the sign-in over.
+    try {
+      const res = await pairApi('PUT', '', { token }).catch((e) => ({ error: e.message }));
+      if (res.paired) return location.replace('/connect?paired=1');
+      if (res.error) return location.replace(`/connect?auth_error=${encodeURIComponent(res.error)}`);
+    } catch {}
+  }
+  if (store.get('gm.token')) return start(createApi(store.get('gm.token')));
+  // Pick up a pairing that was waiting when the app was closed.
+  const saved = parseJSON(store.get('gm.pair'));
+  if (saved?.code && saved.expiresAt > Date.now()) {
+    state.pair = saved;
+    showPairing('Waiting for your phone…');
+    return pollPairing();
+  }
+  showSignin();
+}
+
+boot();
 
 window.gm = { state }; // handy for debugging in the console
