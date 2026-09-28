@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GroupMe</title>
+  <meta name="description" content="Read and reply to GroupMe chats on Meta Ray-Ban Display">
+  <meta name="mrbd-web-app-capable" content="yes">
+  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+  <link rel="apple-touch-icon" href="icon-512.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1 id="title">GroupMe</h1>
+      <span id="status"></span>
+    </header>
+    <ul id="list"></ul>
+    <div id="chat" hidden>
+      <ol id="msgs"></ol>
+      <div id="bar">
+        <input id="compose" type="text" placeholder="Reply…" autocomplete="off" enterkeyhint="send">
+        <div id="quick"></div>
+      </div>
+    </div>
+    <footer id="hint"></footer>
+    <div id="toast" hidden></div>
+  </div>
+  <input id="tokenInput" type="text" placeholder="Paste access token" autocomplete="off" hidden>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
