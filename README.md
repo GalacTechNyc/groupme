@@ -34,7 +34,7 @@ Either way, your access token is stored only on the device (in the browser's loc
 **Option 1: GroupMe sign-in (recommended once hosted)**
 
 1. Go to [dev.groupme.com/applications](https://dev.groupme.com/applications) and create an application.
-2. Set the **Callback URL** to where the app is hosted, for example `https://galactechnyc.github.io/groupme/`.
+2. Set the **Callback URL** to where the app is hosted, for example `https://groupme-psi.vercel.app/`.
 3. Paste the application's **client ID** into `GROUPME_CLIENT_ID` in `config.js` and push.
 
 A **Sign in with GroupMe** button then appears. GroupMe sends the browser back to the app with a token, and the app removes it from the address bar right away.
@@ -61,7 +61,7 @@ Open http://localhost:8610/?demo in Chrome. The arrow keys stand in for band swi
 
 ## Put it on the glasses
 
-1. Host the folder on any HTTPS host. GitHub Pages works: repo **Settings → Pages → Deploy from branch → `main` / root**.
+1. Host the folder on any HTTPS host. It's deployed on Vercel at https://groupme-psi.vercel.app (redeploy with `vercel deploy --prod`).
 2. In the Meta AI app, turn on developer mode for your glasses and add the web app by URL. See [Meta's web app docs](https://wearables.developer.meta.com/docs/develop/webapps).
 
 ## Files

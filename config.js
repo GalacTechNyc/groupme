@@ -1,6 +1,6 @@
 // GroupMe sign-in: create an application at https://dev.groupme.com/applications
 // with the callback URL set to where this app is hosted (for example
-// https://galactechnyc.github.io/groupme/), then paste its client ID here.
+// https://groupme-psi.vercel.app/), then paste its client ID here.
 // Client IDs are meant to be used in browser apps, so it's fine for this to be public.
 export const GROUPME_CLIENT_ID = '';
 
