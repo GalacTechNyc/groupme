@@ -110,3 +110,6 @@ input {
 }
 #toast[hidden] { display: none; }
 #toast b { color: var(--gm); }
+
+/* The glasses sign-in link can be selected and copied by hand. */
+.row small.link { white-space: normal; overflow-wrap: anywhere; font-size: 13px; user-select: text; -webkit-user-select: text; }

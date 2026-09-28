@@ -131,8 +131,15 @@ function signinRows() {
       title: 'Sign in with GroupMe',
       sub: 'Opens GroupMe’s sign-in page',
       hint: 'Pinch to sign in',
-      run: () => (location.href = `https://oauth.groupme.com/oauth/authorize?client_id=${encodeURIComponent(GROUPME_CLIENT_ID)}`),
+      run: openSignIn,
     });
+  rows.push({
+    kind: 'info',
+    ico: '👓',
+    title: 'On the glasses? Sign in on your phone',
+    sub: 'Open this app on your phone, sign in, tap “Set up glasses”, then paste that link as this app’s URL in the Meta AI app.',
+    hint: '',
+  });
   rows.push({ kind: 'input', hint: 'Pinch to paste or type your access token' });
   rows.push({
     kind: 'info',
@@ -147,8 +154,53 @@ function signinRows() {
 
 function chatRows() {
   const rows = state.convs.map((c) => ({ kind: 'conv', conv: c, hint: 'Swipe ▲▼ to pick a chat · pinch to open' }));
+  if (store.get('gm.token') && !new URLSearchParams(location.search).has('demo'))
+    rows.push({
+      ico: '👓',
+      title: 'Set up glasses',
+      sub: state.setupShown ? glassesLink() : 'Copy a link that signs the glasses in',
+      link: state.setupShown,
+      hint: 'Pinch to copy the glasses sign-in link',
+      run: shareGlassesLink,
+    });
   rows.push({ ico: '⎋', title: 'Sign out', sub: state.me ? `Signed in as ${state.me.name}` : '', hint: 'Pinch to sign out', run: () => signOut() });
   return rows;
+}
+
+// GroupMe's sign-in page is on another site. If the browser doesn't leave
+// (the glasses may not allow it), explain the phone route instead.
+function openSignIn() {
+  let left = false;
+  addEventListener('pagehide', () => (left = true), { once: true });
+  location.href = `https://oauth.groupme.com/oauth/authorize?client_id=${encodeURIComponent(GROUPME_CLIENT_ID)}`;
+  setTimeout(() => {
+    if (!left && document.visibilityState === 'visible') hint('Can’t open sign-in here: sign in on your phone instead', true);
+  }, 2500);
+}
+
+// A link to this app carrying the token in the #fragment (never sent to any
+// server). Pasted as the web app URL in the Meta AI app, it signs the glasses in.
+function glassesLink() {
+  return `${location.origin}${location.pathname}#access_token=${store.get('gm.token')}`;
+}
+
+async function shareGlassesLink() {
+  const link = glassesLink();
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'GroupMe glasses sign-in', url: link });
+      return hint('Paste it as this app’s URL in the Meta AI app');
+    }
+    await navigator.clipboard.writeText(link);
+    hint('Copied: paste it as this app’s URL in the Meta AI app');
+  } catch (e) {
+    if (e?.name === 'AbortError') return;
+    // Couldn't share or copy: show the link so it can be copied by hand.
+    state.setupShown = true;
+    state.rows = chatRows();
+    renderList();
+    hint('Copy the link shown above', true);
+  }
 }
 
 function rowHtml(r, i) {
@@ -163,8 +215,8 @@ function rowHtml(r, i) {
       <div class="txt"><b>${esc(c.name)}</b><small>${esc(preview)}</small></div>
       <span class="when">${ago(c.time)}</span></li>`;
   }
-  return `<li class="row${r.kind === 'info' ? ' info' : ''}${sel}" data-i="${i}"><span class="ico">${r.ico}</span>
-    <div class="txt"><b>${esc(r.title)}</b><small>${esc(r.sub)}</small></div></li>`;
+  return `<li class="row${r.kind === 'info' || r.link ? ' info' : ''}${sel}" data-i="${i}"><span class="ico">${r.ico}</span>
+    <div class="txt"><b>${esc(r.title)}</b><small${r.link ? ' class="link"' : ''}>${esc(r.sub)}</small></div></li>`;
 }
 
 function renderList() {
@@ -669,12 +721,21 @@ msgsEl.addEventListener(
 // ---------- boot ----------
 
 const params = new URLSearchParams(location.search);
-const hashParams = new URLSearchParams(location.hash.slice(1));
-const returned = params.get('access_token') || hashParams.get('access_token');
-if (returned) {
-  store.set('gm.token', returned);
-  history.replaceState(null, '', location.pathname); // keep the token out of the address bar
+
+// A token arrives in the URL from GroupMe's sign-in (?access_token=) or from
+// the glasses setup link (#access_token=). Save it and clear it from the address bar.
+function tokenFromUrl() {
+  const token = params.get('access_token') || new URLSearchParams(location.hash.slice(1)).get('access_token');
+  if (!token) return null;
+  store.set('gm.token', token);
+  history.replaceState(null, '', location.pathname);
+  return token;
 }
+tokenFromUrl();
+addEventListener('hashchange', () => {
+  const token = tokenFromUrl();
+  if (token) start(createApi(token));
+});
 
 if (params.has('demo')) {
   import('./demo.js').then(({ demoApi }) => start(demoApi));
